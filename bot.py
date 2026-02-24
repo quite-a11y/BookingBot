@@ -171,7 +171,7 @@ async def continue_reg(message: types.Message):
                 del registration_step[user_id]
                 del user_data[user_id]
 async def main():
-    print("Бот запущен")
+    print("Бот запущен!")
     await dp.start_polling(bot) 
 
 if __name__ == "__main__":
