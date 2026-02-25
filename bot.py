@@ -14,6 +14,18 @@ booking_data = {}
 registration_step = {} #Отслеживание шагов регистрации
 booking_step = {} #Отслеживание шагов бронирования
 
+
+edit_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="ФИО", callback_data="edit_name")],
+    [InlineKeyboardButton(text="Телефон", callback_data="edit_phone")],
+    [InlineKeyboardButton(text="Серия паспорта", callback_data="edit_series")],
+    [InlineKeyboardButton(text="Номер паспорта", callback_data="edit_number")],
+    [InlineKeyboardButton(text="Кем выдан", callback_data="edit_issued")],
+    [InlineKeyboardButton(text="Дата выдачи", callback_data="edit_date")],
+    [InlineKeyboardButton(text="Прописка", callback_data="edit_registration")],
+    [buttons.btn_back, buttons.btn_cancel]
+])
+
 start_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [buttons.btn_start]
@@ -38,7 +50,7 @@ dur_reg_keyboard = InlineKeyboardMarkup(
 
 end_reg_keyboard = InlineKeyboardMarkup(
     keyboard=[
-        [buttons.btn_confrim,buttons.btn_edit],
+        [buttons.btn_confirm,buttons.btn_edit],
     ],
     resize_keyboard=True
 )
@@ -84,8 +96,116 @@ async def start_reg(message:types.Message):
         reply_markup=dur_reg_keyboard
     )
 
+@dp.callback_query(lambda c: c.data == buttons.CONFIRM_CALLBACK)
+async def confirm_registration(callback: types.CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    user_name = user_data[user_id]['full_name']
+    database.add_client(
+        user_data[user_id]['full_name'],
+        user_data[user_id]['phone'],
+        user_data[user_id]['passport_series'],
+        user_data[user_id]['passport_number'],
+        user_data[user_id]['passport_issued'],
+        user_data[user_id]['date_of_issue'],
+        user_data[user_id]['registration'],
+        user_id
+    )
+    del registration_step[user_id]
+    del user_data[user_id]
+    await callback.message.answer(f'Поздравляю, {user_name}, вы успешно зарегестрировались! \n'
+                                  'Теперь вам доступны машины для бронирования',
+    reply_markup=reg_keyboard)
+    
+    
 
 
+@dp.callback_query(lambda c: c.data == buttons.CANCEL_CALLBACK)
+async def cancel_registration(callback: types.CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    del registration_step[user_id]
+    del user_data[user_id]
+    await callback.message.answer('Регистрация отменена')
+    
+@dp.callback_query(lambda c: c.data == buttons.BACK_CALLBACK)
+async def back_registration(callback: types.CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+
+    if registration_step[user_id] > 1:
+        registration_step[user_id] -= 1
+        questions = {
+            1: "Введите ваше ФИО:",
+            2: "Введите ваш номер телефона:",
+            3: "Введите серию паспорта:",
+            4: "Введите номер паспорта:",
+            5: "Кем выдан паспорт?",
+            6: "Дата выдачи (ДД.ММ.ГГГГ):",
+            7: "Введите вашу прописку:"
+        }
+
+        await callback.message.answer(f'Шаг {registration_step[user_id]} из 7\n'
+                                      f'{questions[registration_step[user_id]]}',
+                                      reply_markup=dur_reg_keyboard)
+
+@dp.callback_query(lambda c: c.data == buttons.EDIT_CALLBACK)
+async def egit_registration(callback: types.CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    await callback.message.edit_text(
+        "Выберите, что хотите изменить:",
+        reply_markup=edit_keyboard
+    )
+
+@dp.callback_query(lambda c: c.data == "edit_name")
+async def edit_name(callback: types.CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    registration_step[user_id] = "edit_name"
+    await callback.message.edit_text("Введите ФИО:")
+
+@dp.callback_query(lambda c: c.data == "edit_phone")
+async def edit_phone(callback: types.CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    registration_step[user_id] = "edit_phone"
+    await callback.message.edit_text("Введите телефон:")
+
+@dp.callback_query(lambda c: c.data == "edit_series")
+async def edit_series(callback: types.CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    registration_step[user_id] = "edit_series"
+    await callback.message.edit_text("Введите серию паспорта:")
+
+@dp.callback_query(lambda c: c.data == "edit_number")
+async def edit_number(callback: types.CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    registration_step[user_id] = "edit_number"
+    await callback.message.edit_text("Введите номер паспорта:")
+
+@dp.callback_query(lambda c: c.data == "edit_issued")
+async def edit_issued(callback: types.CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    registration_step[user_id] = "edit_issued"
+    await callback.message.edit_text("Кем выдан паспорт:")
+
+@dp.callback_query(lambda c: c.data == "edit_date")
+async def edit_date(callback: types.CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    registration_step[user_id] = "edit_date"
+    await callback.message.edit_text("Введите дату выдачи паспорта:")
+
+@dp.callback_query(lambda c: c.data == "edit_registration")
+async def edit_reg(callback: types.CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    registration_step[user_id] = "edit_reg"
+    await callback.message.edit_text("Введите прописку:")
 
 
 @dp.message()
@@ -93,8 +213,13 @@ async def continue_reg(message: types.Message):
     user_id = message.from_user.id
     if user_id not in registration_step:
         await message.answer('Используйте кнопки в меню.')
+        return
+    step = registration_step[user_id]
+
+    if isinstance(step,str):
+        
+    
     else:
-        step = registration_step[user_id]
         if step == 1:
             user_data[user_id]['full_name'] = message.text
             registration_step[user_id] = 2
@@ -147,7 +272,9 @@ async def continue_reg(message: types.Message):
                                 Кем выдан: {user_data[user_id]["passport_issued"]}\n
                                 Дата выдачи: {user_data[user_id]["date_of_issue"]}\n  
                                 Место регистрации: {user_data[user_id]["registration"]}\n
-                                ''',reply_markup=end_reg_keyboard)                             
+                                ''',reply_markup=end_reg_keyboard)
+        elif step == 8:
+
             try:
                 client_id = database.add_client(
                     user_data[user_id]['full_name'],
@@ -161,7 +288,7 @@ async def continue_reg(message: types.Message):
                 )
                 del registration_step[user_id]
                 del user_data[user_id]
-                await message.answer('Регистрация успешно завершена! \n' \
+                await message.answer('Регистрация успешно завершена! \n'
                 'Теперь вы можете бронировать машины',
                 reply_markup=reg_keyboard
                 )
