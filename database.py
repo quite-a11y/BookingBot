@@ -39,8 +39,8 @@ def init_db():
             rental_id INTEGER PRIMARY KEY AUTOINCREMENT,
             car_id INTEGER NOT NULL,
             client_id INTEGER NOT NULL,
-            start_datetime TEXT NOT NULL,
-            end_datetime TEXT NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
             total_cost INTEGER,
             status TEXT DEFAULT 'pending'
         )
@@ -84,12 +84,12 @@ def get_all_cars():
     connection.close()
     return cars
 
-def get_avilable_cars(start_datetime,end_datetime):
+def get_avilable_cars(start_date,end_date):
     connection = get_connection()
     cursor = connection.cursor()
-    st_date = datetime.strptime(start_datetime,'%d.%m.%Y %H:%M').strftime('%Y-%m-%d %H:%M')
-    en_date = datetime.strptime(end_datetime,'%d.%m.%Y %H:%M').strftime('%Y-%m-%d %H:%M')
-    cursor.execute('SELECT car_id FROM bookings WHERE start_datetime <= ? AND end_datetime >= ?',(en_date,st_date))
+    st_date = datetime.strptime(start_date,'%d.%m.%Y %H:%M').strftime('%Y-%m-%d %H:%M')
+    en_date = datetime.strptime(end_date,'%d.%m.%Y %H:%M').strftime('%Y-%m-%d %H:%M')
+    cursor.execute('SELECT car_id FROM bookings WHERE start_date <= ? AND end_date >= ?',(en_date,st_date))
     list_not_avilable = cursor.fetchall()
     if list_not_avilable:
         not_avilable_cars_ids = [car[0] for car in list_not_avilable]
@@ -140,13 +140,13 @@ def update_car_availability(car_id,is_available):
     else:
         return False
     
-def add_booking(car_id,client_id,start_datetime,end_datetime,total_cost,status='pending'):
+def add_booking(car_id,client_id,start_date,end_date,total_cost,status='pending'):
     connection = get_connection()
     cursor = connection.cursor()
-    st_date = datetime.strptime(start_datetime,'%d.%m.%Y %H:%M').strftime('%Y-%m-%d %H:%M')
-    en_date = datetime.strptime(end_datetime,'%d.%m.%Y %H:%M').strftime('%Y-%m-%d %H:%M')
+    st_date = datetime.strptime(start_date,'%d.%m.%Y %H:%M').strftime('%Y-%m-%d %H:%M')
+    en_date = datetime.strptime(end_date,'%d.%m.%Y %H:%M').strftime('%Y-%m-%d %H:%M')
     cursor.execute('''INSERT INTO bookings 
-                   (car_id,client_id,start_datetime,end_datetime,total_cost,status) 
+                   (car_id,client_id,start_date,end_date,total_cost,status) 
                    VALUES (?, ?, ?, ?, ?, ?)''', 
                    (car_id,client_id,st_date,en_date,total_cost,status))
     connection.commit()
@@ -157,7 +157,7 @@ def add_booking(car_id,client_id,start_datetime,end_datetime,total_cost,status='
 def get_bookings_by_client(client_id):
     connection = get_connection()
     cursor = connection.cursor()
-    cursor.execute('SELECT * FROM bookings WHERE client_id = ? ORDER BY start_datetime DESC',(client_id,))
+    cursor.execute('SELECT * FROM bookings WHERE client_id = ? ORDER BY start_date DESC',(client_id,))
     history_of_bookings = cursor.fetchall()
     connection.close()
     return history_of_bookings
@@ -175,7 +175,7 @@ def get_all_bookings_admin():
         FROM bookings
         JOIN clients ON bookings.client_id = clients.client_id
         JOIN cars ON bookings.car_id = cars.car_id
-        ORDER BY bookings.start_datetime DESC
+        ORDER BY bookings.start_date DESC
         ''')
     history_of_bookings_admin = cursor.fetchall()
     connection.close()
@@ -206,8 +206,8 @@ def get_bookings_by_date(cur_datetime):
         FROM bookings
         JOIN clients ON bookings.client_id = clients.client_id
         JOIN cars ON bookings.car_id = cars.car_id
-        WHERE start_datetime <= ? AND end_datetime >= ?
-        ORDER BY bookings.start_datetime DESC
+        WHERE start_date <= ? AND end_date >= ?
+        ORDER BY bookings.start_date DESC
         ''',(current_date, current_date))
     current_data_booking = cursor.fetchall()
     connection.close()
@@ -219,7 +219,7 @@ def get_booked_datetimes_for_car(car_id):
     connection = get_connection()
     cursor = connection.cursor()
     cursor.execute(''' 
-        SELECT start_datetime, end_datetime 
+        SELECT start_date, end_date 
         FROM bookings
         WHERE car_id = ?
     ''', (car_id,))
