@@ -6,7 +6,11 @@ from datetime import datetime
 import database
 import buttons
 
-TOKEN = "8445110973:AAGMyJFrIHrSHcHgwn1bWvCeOKmDlqud_mY"
+with open('api.txt','r',encoding='utf-8') as r:
+    line = r.read()
+    print(line)
+
+TOKEN = line
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
