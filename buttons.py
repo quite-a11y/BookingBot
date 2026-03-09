@@ -4,7 +4,7 @@ btn_start = KeyboardButton(text='Старт')
 btn_help = KeyboardButton(text="Помощь")
 
 #Кнопки после регистрации
-btn_show_cars = KeyboardButton(text="Посмотреть все машины")
+btn_show_cars = KeyboardButton(text="Весь автопарк")
 btn_show_my_bookings = KeyboardButton(text="Мои бронирования")
 btn_reg = KeyboardButton(text="Зарегестрироваться")
 btn_book_a_car = KeyboardButton(text='Забронировать машину')
