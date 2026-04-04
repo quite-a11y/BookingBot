@@ -3,6 +3,14 @@ from aiogram.types import KeyboardButton,InlineKeyboardButton,InlineKeyboardMark
 btn_start = KeyboardButton(text='Старт')
 btn_help = KeyboardButton(text="Помощь")
 
+#Кнопка админ панели
+btn_admin_cars = KeyboardButton(text="Управление машинами")
+btn_admin_all_bookings = KeyboardButton(text="Все бронирования")
+btn_add_car = KeyboardButton(text="Добавить машину")
+btn_edit_car = KeyboardButton(text="Редактировать машину")
+btn_delete_car = KeyboardButton(text="Удалить машину")
+btn_back_to_admin = KeyboardButton(text="Назад")
+
 #Кнопки после регистрации
 btn_show_cars = KeyboardButton(text="Весь автопарк")
 btn_show_my_bookings = KeyboardButton(text="Мои бронирования")

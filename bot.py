@@ -5,14 +5,18 @@ from aiogram.types import ReplyKeyboardMarkup,KeyboardButton, InlineKeyboardButt
 from datetime import datetime
 import database
 import buttons
+from aiogram.client.session.aiohttp import AiohttpSession
 
 with open('api.txt','r',encoding='utf-8') as r:
     line = r.read()
     print(line)
 
+# PROXY_URL = "socks5://185.21.10.126:443"
+# session = AiohttpSession(proxy=PROXY_URL)
 TOKEN = line
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
+ADMIN_ID = 1027977984
 
 user_data = {}
 booking_data = {}
@@ -26,6 +30,28 @@ start_keyboard = ReplyKeyboardMarkup(
     ],
     resize_keyboard=True
 )
+
+
+#Клава админа
+admin_main_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [buttons.btn_admin_cars],
+        [buttons.btn_admin_all_bookings]
+    ],
+    resize_keyboard=True
+)
+
+admin_cars_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [buttons.btn_add_car],
+        [buttons.btn_edit_car],
+        [buttons.btn_delete_car],
+        [buttons.btn_back_to_admin]
+    ],
+    resize_keyboard=True
+)
+
+
 #Клава до регистрации
 unreg_keyboard = ReplyKeyboardMarkup(
     keyboard=[
@@ -76,16 +102,40 @@ async def cmd_start(message: types.Message):
     user_id = message.from_user.id
     client = database.get_client_by_tgid(user_id)
     if client:
-        await message.answer(
+        if user_id == ADMIN_ID:
+            await message.answer(
+                f'С возвращением, Админ {client["full_name"]}!',
+                reply_markup=admin_main_keyboard 
+            )
+        else:
+            await message.answer(
             f'С возвращением, {client["full_name"]}!',
             reply_markup=reg_keyboard
-        )
+            )
     else:
         await message.answer(
             f'Привет, {message.from_user.first_name}!\n'
             'Для регистрации нажми кнопку ниже. \n', 
             reply_markup=unreg_keyboard
         )
+
+#Обработчик кнопки управление машинами
+@dp.message(lambda message: message.text == buttons.btn_admin_cars.text)
+async def admin_cars_menu(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    await message.answer(
+        reply_markup=admin_cars_keyboard
+    )
+#Обработчик кнопки назад
+@dp.message(lambda message: message.text == buttons.btn_back_to_admin.text)
+async def back_to_admin(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    await message.answer(
+        reply_markup=admin_main_keyboard
+    )
+
 
 #Обработчик кнопки регистрации
 @dp.message(lambda message: message.text == buttons.btn_reg.text)

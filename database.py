@@ -16,6 +16,10 @@ def init_db():
             model TEXT NOT NULL,
             year INTEGER,
             price_per_day INTEGER,
+            steering_wheel TEXT,
+            transmission TEXT,
+            color TEXT,
+            engine_volume REAL,
             is_available INTEGER DEFAULT 1 
         )
     ''')
@@ -45,6 +49,13 @@ def init_db():
             status TEXT DEFAULT 'pending'
         )
     ''')
+    try:
+        cursor.execute('ALTER TABLE cars ADD COLUMN steering_wheel TEXT')
+        cursor.execute('ALTER TABLE cars ADD COLUMN transmission TEXT')
+        cursor.execute('ALTER TABLE cars ADD COLUMN color TEXT')
+        cursor.execute('ALTER TABLE cars ADD COLUMN engine_volume REAL')
+    except:
+        pass
 
 def add_client(full_name, phone, passport_series, passport_number, passport_issued, date_of_issue, registration, telegram_id):
     connection = get_connection()
@@ -112,6 +123,14 @@ def get_car_by_id(car_id):
     connection.close()
     return car_by_id
 
+def get_car_full_info(car_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute('SELECT * FROM cars WHERE car_id = ?', (car_id,))
+    car = cursor.fetchone()
+    connection.close()
+    return car
+
 def get_car_price(car_id):
     connection = get_connection()
     cursor = connection.cursor()
@@ -120,10 +139,14 @@ def get_car_price(car_id):
     connection.close()
     return car_price_by_id[0] if car_price_by_id else None
 
-def add_car(brand,model,year,price_per_day):
+def add_car(brand, model, year, price_per_day, steering_wheel, transmission, color, engine_volume):
     connection = get_connection()
     cursor = connection.cursor()
-    cursor.execute('INSERT INTO cars (brand,model,year,price_per_day) VALUES (?, ?, ?, ?)',(brand,model,year,price_per_day))
+    cursor.execute('''
+        INSERT INTO cars 
+        (brand, model, year, price_per_day, steering_wheel, transmission, color, engine_volume) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (brand, model, year, price_per_day, steering_wheel, transmission, color, engine_volume))
     connection.commit()
     new_car_id = cursor.lastrowid
     connection.close()
