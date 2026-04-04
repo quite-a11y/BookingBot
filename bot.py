@@ -125,6 +125,7 @@ async def admin_cars_menu(message: types.Message):
     if message.from_user.id != ADMIN_ID:
         return
     await message.answer(
+        "Управление машинами",
         reply_markup=admin_cars_keyboard
     )
 #Обработчик кнопки назад
