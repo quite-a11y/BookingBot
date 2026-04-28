@@ -20,6 +20,7 @@ def init_db():
             transmission TEXT,
             color TEXT,
             engine_volume REAL,
+            photo_id TEXT,
             is_available INTEGER DEFAULT 1 
         )
     ''')
@@ -34,7 +35,10 @@ def init_db():
             passport_issued TEXT NOT NULL,
             date_of_issue TEXT NOT NULL,
             registration TEXT NOT NULL,
-            telegram_id INTEGER NOT NULL
+            telegram_id INTEGER NOT NULL,
+            passport_photo_id TEXT,
+            driver_license_photo_id TEXT,
+            documents_uploaded INTEGER DEFAULT 0
         )
     ''')
 
@@ -50,26 +54,47 @@ def init_db():
         )
     ''')
     try:
+        cursor.execute('ALTER TABLE clients ADD COLUMN passport_photo_id TEXT')
+        cursor.execute('ALTER TABLE clients ADD COLUMN driver_license_photo_id TEXT')
+        cursor.execute('ALTER TABLE clients ADD COLUMN documents_uploaded INTEGER DEFAULT 0')
         cursor.execute('ALTER TABLE cars ADD COLUMN steering_wheel TEXT')
         cursor.execute('ALTER TABLE cars ADD COLUMN transmission TEXT')
         cursor.execute('ALTER TABLE cars ADD COLUMN color TEXT')
         cursor.execute('ALTER TABLE cars ADD COLUMN engine_volume REAL')
+        cursor.execute('ALTER TABLE cars ADD COLUMN photo_id TEXT')
     except:
         pass
 
-def add_client(full_name, phone, passport_series, passport_number, passport_issued, date_of_issue, registration, telegram_id):
+def add_client(full_name, phone, passport_series, passport_number, 
+passport_issued, date_of_issue, registration, telegram_id,
+passport_photo_id=None, driver_license_photo_id=None, documents_uploaded=0):
     connection = get_connection()
     cursor = connection.cursor()
     cursor.execute('''
     INSERT INTO clients
     (full_name, phone, passport_series, passport_number, 
-    passport_issued, date_of_issue, registration, telegram_id) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)'''
-    ,(full_name, phone, passport_series, passport_number, passport_issued, date_of_issue, registration, telegram_id))
+    passport_issued, date_of_issue, registration, telegram_id,passport_photo_id,
+    driver_license_photo_id,documents_uploaded) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
+    ,(full_name, phone, passport_series, passport_number, passport_issued, 
+    date_of_issue, registration, telegram_id,passport_photo_id,driver_license_photo_id,
+    documents_uploaded))
+
     connection.commit()
     client_id = cursor.lastrowid
     connection.close()
     return client_id
+
+def update_client_documents(telegram_id,passport_photo_id,driver_license_photo_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute('''
+    UPDATE clients
+    SET passport_photo_id = ?,driver_license_photo_id = ?, documents_uploaded = 1
+    WHERE telegram_id = ?''',
+    (passport_photo_id, driver_license_photo_id, telegram_id))
+    connection.commit()
+    connection.close()
 
 def get_client_by_phone(phone):
     connection = get_connection()
@@ -139,18 +164,27 @@ def get_car_price(car_id):
     connection.close()
     return car_price_by_id[0] if car_price_by_id else None
 
-def add_car(brand, model, year, price_per_day, steering_wheel, transmission, color, engine_volume):
+def add_car(brand, model, year, steering_wheel, transmission, color, engine_volume, price_per_day, photo_id=None):
     connection = get_connection()
     cursor = connection.cursor()
     cursor.execute('''
         INSERT INTO cars 
-        (brand, model, year, price_per_day, steering_wheel, transmission, color, engine_volume) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (brand, model, year, price_per_day, steering_wheel, transmission, color, engine_volume))
+        (brand, model, year, steering_wheel, transmission, color, engine_volume, price_per_day, photo_id) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (brand, model, year, steering_wheel, transmission, color, engine_volume, price_per_day, photo_id))
     connection.commit()
     new_car_id = cursor.lastrowid
     connection.close()
     return new_car_id
+    
+def delete_car(car_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute('DELETE FROM cars WHERE car_id = ?', (car_id,))
+    connection.commit()
+    deleted = cursor.rowcount > 0
+    connection.close()
+    return deleted
 
 def update_car_availability(car_id,is_available):
     connection = get_connection()
@@ -166,8 +200,13 @@ def update_car_availability(car_id,is_available):
 def add_booking(car_id,client_id,start_date,end_date,total_cost,status='pending'):
     connection = get_connection()
     cursor = connection.cursor()
-    st_date = datetime.strptime(start_date,'%d.%m.%Y %H:%M').strftime('%Y-%m-%d %H:%M')
-    en_date = datetime.strptime(end_date,'%d.%m.%Y %H:%M').strftime('%Y-%m-%d %H:%M')
+    if ' ' not in start_date:
+        start_date += " 00:00"
+    if ' ' not in end_date:
+        end_date += " 00:00"
+    
+    st_date = datetime.strptime(start_date, '%d.%m.%Y %H:%M').strftime('%Y-%m-%d %H:%M')
+    en_date = datetime.strptime(end_date, '%d.%m.%Y %H:%M').strftime('%Y-%m-%d %H:%M')
     cursor.execute('''INSERT INTO bookings 
                    (car_id,client_id,start_date,end_date,total_cost,status) 
                    VALUES (?, ?, ?, ?, ?, ?)''', 

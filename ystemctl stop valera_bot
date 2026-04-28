@@ -1,0 +1,11 @@
+[0;1;32m●[0m valera_bot.service - Valera Telegram Bot
+     Loaded: loaded (]8;;file://284550.fornex.cloud/etc/systemd/system/valera_bot.service/etc/systemd/system/valera_bot.service]8;;; [0;1;32menabled[0m; preset: [0;1;32menabled[0m)
+     Active: [0;1;32mactive (running)[0m since Mon 2026-04-06 15:33:28 UTC; 4s ago
+   Main PID: 21274 (python3)
+      Tasks: 2 (limit: 1055)
+     Memory: 99.1M (peak: 99.3M)
+        CPU: 2.766s
+     CGroup: /system.slice/valera_bot.service
+             └─[0;38;5;245m21274 /opt/valera_bot/venv/bin/python3 /opt/valera_bot/bot.py[0m
+
+Apr 06 15:33:28 284550.fornex.cloud systemd[1]: Started valera_bot.service - Valera Telegram Bot.

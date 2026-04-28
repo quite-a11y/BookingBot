@@ -5,6 +5,7 @@ btn_help = KeyboardButton(text="Помощь")
 
 #Кнопка админ панели
 btn_admin_cars = KeyboardButton(text="Управление машинами")
+btn_admin_all_cars = KeyboardButton(text='Все машины')
 btn_admin_all_bookings = KeyboardButton(text="Все бронирования")
 btn_add_car = KeyboardButton(text="Добавить машину")
 btn_edit_car = KeyboardButton(text="Редактировать машину")
@@ -16,6 +17,10 @@ btn_show_cars = KeyboardButton(text="Весь автопарк")
 btn_show_my_bookings = KeyboardButton(text="Мои бронирования")
 btn_reg = KeyboardButton(text="Зарегестрироваться")
 btn_book_a_car = KeyboardButton(text='Забронировать машину')
+
+#Инлайн кнопки загрзки фото сейчас/позже
+btn_upload_now = InlineKeyboardButton(text='Загрузить сейчас', callback_data='upload_now')
+btn_upload_later = InlineKeyboardButton(text='Загрузить позже', callback_data='upload_later')
 
 
 #Инлайн кнопки при регистрациии и после регистрации
