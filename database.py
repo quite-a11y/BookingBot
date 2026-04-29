@@ -120,12 +120,17 @@ def get_all_cars():
     connection.close()
     return cars
 
-def get_avilable_cars(start_date,end_date):
+def get_avilable_cars(start_date, end_date):
     connection = get_connection()
     cursor = connection.cursor()
     st_date = datetime.strptime(start_date,'%d.%m.%Y %H:%M').strftime('%Y-%m-%d %H:%M')
     en_date = datetime.strptime(end_date,'%d.%m.%Y %H:%M').strftime('%Y-%m-%d %H:%M')
-    cursor.execute('SELECT car_id FROM bookings WHERE start_date <= ? AND end_date >= ?',(en_date,st_date))
+    cursor.execute('''
+        SELECT car_id FROM bookings 
+        WHERE start_date <= ? AND end_date >= ? 
+        AND status IN ('pending', 'confirmed')
+    ''', (en_date, st_date))
+    
     list_not_avilable = cursor.fetchall()
     if list_not_avilable:
         not_avilable_cars_ids = [car[0] for car in list_not_avilable]
@@ -133,12 +138,91 @@ def get_avilable_cars(start_date,end_date):
         cursor.execute(f'''
             SELECT * FROM cars
             WHERE car_id NOT IN ({placeholders})
-        ''',not_avilable_cars_ids)
+        ''', not_avilable_cars_ids)
     else:
         cursor.execute('SELECT * FROM cars')
     avilable_cars = cursor.fetchall()
     connection.close()
     return avilable_cars
+
+def get_booking_details(booking_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute('''
+        SELECT 
+            bookings.*,
+            clients.full_name,
+            clients.phone,
+            clients.passport_series,
+            clients.passport_number,
+            cars.brand,
+            cars.model,
+            cars.price_per_day
+        FROM bookings
+        JOIN clients ON bookings.client_id = clients.client_id
+        JOIN cars ON bookings.car_id = cars.car_id
+        WHERE bookings.rental_id = ?
+    ''', (booking_id,))
+    result = cursor.fetchone()
+    connection.close()
+    return result
+
+def get_user_id_by_booking(booking_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute('''
+        SELECT clients.telegram_id 
+        FROM bookings 
+        JOIN clients ON bookings.client_id = clients.client_id 
+        WHERE bookings.rental_id = ?
+    ''', (booking_id,))
+    result = cursor.fetchone()
+    connection.close()
+    return result['telegram_id'] if result else None
+
+def get_client_bookings_with_details(client_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute('''
+        SELECT 
+            bookings.*,
+            cars.brand,
+            cars.model,
+            cars.price_per_day
+        FROM bookings
+        JOIN cars ON bookings.car_id = cars.car_id
+        WHERE bookings.client_id = ?
+        ORDER BY bookings.start_date DESC
+    ''', (client_id,))
+    result = cursor.fetchall()
+    connection.close()
+    return result
+
+def get_all_bookings_with_details():
+    """Возвращает все брони с данными клиентов и машин"""
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute('''
+        SELECT 
+            bookings.*,
+            clients.full_name,
+            clients.phone,
+            clients.passport_series,
+            clients.passport_number,
+            clients.passport_photo_id,
+            clients.driver_license_photo_id,
+            cars.brand,
+            cars.model,
+            cars.price_per_day,
+            cars.photo_id
+        FROM bookings
+        JOIN clients ON bookings.client_id = clients.client_id
+        JOIN cars ON bookings.car_id = cars.car_id
+        ORDER BY bookings.start_date DESC
+    ''')
+    result = cursor.fetchall()
+    connection.close()
+    return result
 
 def get_car_by_id(car_id):
     connection = get_connection()
