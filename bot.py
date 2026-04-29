@@ -154,11 +154,15 @@ async def admin_show_all_cars(message: types.Message):
     cars_buttons = []
     for car in cars:
         cars_buttons.append([KeyboardButton(text=f"{car['brand']} {car['model']}")])
-    # cars_buttons.append([buttons.btn_back_to_admin])
+    cars_buttons.append([KeyboardButton(text="🔙 Назад")])
     cars_keyboard = ReplyKeyboardMarkup(
         keyboard=cars_buttons,
         resize_keyboard=True
     )
+    
+    # Флаг: админ смотрит все машины из управления машинами
+    admin_temp_data[message.from_user.id] = {'viewing_all_cars': True}
+    
     await message.answer(
         "Список всех машин:",
         reply_markup=cars_keyboard
@@ -429,16 +433,22 @@ async def admin_booking_details(message: types.Message):
     admin_temp_data[user_id]['last_status'] = status
 
 #Подтверждение удаления
-@dp.message(lambda message: message.text and 
-    message.from_user.id == ADMIN_ID and 
-    " " in message.text and 
-    message.text != buttons.btn_admin_all_bookings.text and
-    message.text != buttons.btn_back_to_admin.text and
-    message.text != "🔙 Назад")
 async def confirm_delete_car(message: types.Message):
     print(f"DEBUG confirm_delete_car: {message.text}")
-    if message.text == buttons.btn_back_to_admin.text:
+    
+    # Пропускаем ВСЕ админские кнопки
+    admin_buttons = [
+        buttons.btn_admin_cars.text,
+        buttons.btn_add_car.text,
+        buttons.btn_delete_car.text,
+        buttons.btn_admin_all_cars.text,
+        buttons.btn_admin_all_bookings.text,
+        buttons.btn_back_to_admin.text,
+        "🔙 Назад"
+    ]
+    if message.text in admin_buttons:
         return
+    
     car_name = message.text
     cars = database.get_all_cars()
     selected_car = None
@@ -471,18 +481,12 @@ async def confirm_delete_car(message: types.Message):
     not message.text.startswith(('👤', '🟡', '🟢', '🔙', '🔴')) and
     message.text not in ['Весь автопарк', 'Забронировать машину', 'Мои бронирования', 'Помощь', 'Назад', 'Список всех машин', 'Управление машинами', 'Все бронирования', 'Добавить машину', 'Удалить машину'])
 async def show_car_details(message: types.Message):
-    print(f"DEBUG show_car_details: админ? {message.from_user.id == ADMIN_ID}, текст: {message.text}")
-    if message.from_user.id == ADMIN_ID:
-        print("DEBUG: админ, выходим")
-        return
-    # Пропускаем, если пользователь админ
-    if message.from_user.id == ADMIN_ID:
-        return
+    print(f"DEBUG show_car_details: user={message.from_user.id}, текст={message.text}")
     
-    print(f"=== show_car_details ВЫЗВАНА для {message.text} ===")
-    # Убираем проверку на админа
-    # if message.from_user.id != ADMIN_ID:
-    #     return
+    # Разрешаем админу смотреть, только если он в режиме просмотра всех машин
+    if message.from_user.id == ADMIN_ID:
+        if not admin_temp_data.get(message.from_user.id, {}).get('viewing_all_cars'):
+            return
     
     user_id = message.from_user.id 
     car_text = message.text
@@ -530,6 +534,8 @@ async def admin_cars_menu(message: types.Message):
     print(f"DEBUG admin_cars_menu: {message.text}")
     if message.from_user.id != ADMIN_ID:
         return
+    # Очищаем admin_temp_data при входе в управление машинами
+    admin_temp_data.pop(message.from_user.id, None)
     await message.answer(
         "Управление машинами",
         reply_markup=admin_cars_keyboard
@@ -549,6 +555,7 @@ async def back_to_admin(message: types.Message):
 async def admin_add_car(message: types.Message):
     if message.from_user.id != ADMIN_ID:
         return
+    admin_temp_data.pop(message.from_user.id, None) 
     user_id = message.from_user.id
     admin_car_step[user_id] = 1
     admin_car_data[user_id] = {}
@@ -661,6 +668,7 @@ async def handle_add_car(message: types.Message,user_id: int):
 async def admin_delete_car(message: types.Message):
     if message.from_user.id != ADMIN_ID:
         return
+    admin_temp_data.pop(message.from_user.id, None)
     cars = database.get_all_cars()
     if not cars:
         await message.answer('В базе нет машин')
@@ -775,6 +783,12 @@ async def registration_back(callback: types.CallbackQuery):
 async def back_handler(message: types.Message):
     user_id = message.from_user.id
     
+    # Сначала проверяем просмотр всех машин
+    if user_id == ADMIN_ID and admin_temp_data.get(user_id, {}).get('viewing_all_cars'):
+        del admin_temp_data[user_id]
+        await message.answer("Управление машинами:", reply_markup=admin_cars_keyboard)
+        return
+    
     if user_id == ADMIN_ID and user_id in admin_temp_data:
         # Уровень 3: просмотр броней клиента → вернуться к списку клиентов
         if 'client_name' in admin_temp_data[user_id]:
@@ -841,6 +855,7 @@ async def back_handler(message: types.Message):
     
     # Для обычных пользователей
     await message.answer("Главное меню:", reply_markup=reg_keyboard)
+
 # Заглушка для кнопки "Договор"
 @dp.callback_query(lambda c: c.data.startswith("contract_"))
 async def show_contract(callback: types.CallbackQuery):
