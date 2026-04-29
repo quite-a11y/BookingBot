@@ -199,7 +199,6 @@ def get_client_bookings_with_details(client_id):
     return result
 
 def get_all_bookings_with_details():
-    """Возвращает все брони с данными клиентов и машин"""
     connection = get_connection()
     cursor = connection.cursor()
     cursor.execute('''
@@ -211,6 +210,7 @@ def get_all_bookings_with_details():
             clients.passport_number,
             clients.passport_photo_id,
             clients.driver_license_photo_id,
+            clients.telegram_id,
             cars.brand,
             cars.model,
             cars.price_per_day,

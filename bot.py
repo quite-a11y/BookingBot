@@ -29,6 +29,8 @@ admin_car_step = {}
 admin_last_car_message = {}
 admin_delete_car_id = {}
 temp_client_photos = {}  # {user_id: {'step': 1, 'passport': None, 'license': None}}
+# Добавь рядом с другими словарями в начале python.py:
+admin_temp_data = {}  # {user_id: {'status': 'pending'|'confirmed', 'client_name': '...', ...}}
 
 #Клава загрузки фото документов сейчас/позже
 documents_choice_keyboard = InlineKeyboardMarkup(
@@ -123,21 +125,21 @@ admin_cars_keyboard = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 #Обработчик кнопки назад 
-@dp.message(lambda message: message.text == "Назад")
-async def back_to_main_menu(message: types.Message):
-    print(f"DEBUG back_to_main_menu: {message.text}")
-    user_id = message.from_user.id
+# @dp.message(lambda message: message.text == "Назад")
+# async def back_to_main_menu(message: types.Message):
+#     print(f"DEBUG back_to_main_menu: {message.text}")
+#     user_id = message.from_user.id
     
-    if user_id == ADMIN_ID:
-        await message.answer(
-            "Админ панель:",
-            reply_markup=admin_main_keyboard
-        )
-    else:
-        await message.answer(
-            "Главное меню:",
-            reply_markup=reg_keyboard
-        )
+#     if user_id == ADMIN_ID:
+#         await message.answer(
+#             "Админ панель:",
+#             reply_markup=admin_main_keyboard
+#         )
+#     else:
+#         await message.answer(
+#             "Главное меню:",
+#             reply_markup=reg_keyboard
+#         )
 #Обработчик кнопки все машины у админа
 @dp.message(lambda message: message.text == buttons.btn_admin_all_cars.text)
 async def admin_show_all_cars(message: types.Message):
@@ -187,6 +189,340 @@ async def cmd_start(message: types.Message):
             'Для регистрации нажми кнопку ниже.', 
             reply_markup=unreg_keyboard
         )
+#Все бронирования (админ)
+@dp.message(lambda message: message.text == buttons.btn_admin_all_bookings.text)
+async def admin_all_bookings(message: types.Message):
+    print("DEBUG: admin_all_bookings сработал!")
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    bookings = database.get_all_bookings_with_details()
+    
+    pending_count = len([b for b in bookings if b['status'] == 'pending'])
+    confirmed_count = len([b for b in bookings if b['status'] == 'confirmed'])
+    
+    status_buttons = []
+    if pending_count > 0:
+        status_buttons.append([KeyboardButton(text=f"🟡 Ожидают подтверждения ({pending_count})")])
+    if confirmed_count > 0:
+        status_buttons.append([KeyboardButton(text=f"🟢 Ожидают встречи ({confirmed_count})")])
+    
+    status_buttons.append([KeyboardButton(text="🔙 Назад")])
+    
+    status_keyboard = ReplyKeyboardMarkup(
+        keyboard=status_buttons,
+        resize_keyboard=True
+    )
+    
+    await message.answer(
+        "Выберите статус для просмотра:",
+        reply_markup=status_keyboard
+    )
+# обработчик выбора статуса 
+@dp.message(lambda message: message.text and 
+    message.from_user.id == ADMIN_ID and 
+    (message.text.startswith("🟡") or message.text.startswith("🟢")))
+async def admin_status_choice(message: types.Message):
+    print(f"DEBUG admin_status_choice: {message.text}")
+    
+    if message.text.startswith("🟡"):
+        status = 'pending'
+    elif message.text.startswith("🟢"):
+        status = 'confirmed'
+    else:
+        return
+    
+    bookings = database.get_all_bookings_with_details()
+    filtered = [b for b in bookings if b['status'] == status]
+    
+    if not filtered:
+        await message.answer(f"Нет броней с этим статусом")
+        return
+    
+    # Получаем уникальных клиентов
+    unique_clients = {}
+    for b in filtered:
+        client_id = b['client_id']
+        if client_id not in unique_clients:
+            unique_clients[client_id] = b['full_name']
+    
+    client_buttons = []
+    for client_id, full_name in unique_clients.items():
+        client_buttons.append([KeyboardButton(text=f"👤 {full_name}")])
+    
+    client_buttons.append([KeyboardButton(text="🔙 Назад")])
+    
+    client_keyboard = ReplyKeyboardMarkup(
+        keyboard=client_buttons,
+        resize_keyboard=True
+    )
+    
+    # Сохраняем выбранный статус для использования на следующих шагах
+    admin_temp_data[message.from_user.id] = {'status': status}
+    
+    status_text = "ожидают подтверждения" if status == 'pending' else "ожидают встречи"
+    await message.answer(
+        f"Клиенты, у которых есть брони со статусом '{status_text}':",
+        reply_markup=client_keyboard
+    )
+
+#Обработчик выбора клиента
+@dp.message(lambda message: message.text and 
+    message.from_user.id == ADMIN_ID and 
+    message.text.startswith("👤"))
+async def admin_client_choice(message: types.Message):
+    print(f"DEBUG admin_client_choice: {message.text}")
+    
+    user_id = message.from_user.id
+    if user_id not in admin_temp_data or 'status' not in admin_temp_data[user_id]:
+        await message.answer("Ошибка: не выбран статус")
+        return
+    
+    status = admin_temp_data[user_id]['status']
+    full_name = message.text[2:]  # убираем "👤 "
+    
+    bookings = database.get_all_bookings_with_details()
+    client_bookings = [b for b in bookings if b['status'] == status and b['full_name'] == full_name]
+    
+    if not client_bookings:
+        await message.answer("Брони не найдены")
+        return
+    
+    booking_buttons = []
+    for b in client_bookings:
+        btn_text = f"{b['brand']} {b['model']} | {b['start_date']}"
+        booking_buttons.append([KeyboardButton(text=btn_text)])
+    
+    booking_buttons.append([KeyboardButton(text="🔙 Назад")])
+    
+    booking_keyboard = ReplyKeyboardMarkup(
+        keyboard=booking_buttons,
+        resize_keyboard=True
+    )
+    
+    # Сохраняем имя клиента для возврата назад
+    admin_temp_data[user_id]['client_name'] = full_name
+    admin_temp_data[user_id]['at_clients_level'] = False
+    
+    status_text = "ожидают подтверждения" if status == 'pending' else "ожидают встречи"
+    await message.answer(
+        f"Брони клиента {full_name} ({status_text}):",
+        reply_markup=booking_keyboard
+    )
+
+# Обработчик выбора конкретной брони (НОВЫЙ — 2 части: brand model | start_date)
+@dp.message(lambda message: message.text and 
+    message.from_user.id == ADMIN_ID and 
+    " | " in message.text and 
+    "  |  " not in message.text and  # исключаем старый формат с тремя частями
+    not message.text.startswith("🟡") and 
+    not message.text.startswith("🟢") and 
+    not message.text.startswith("🔴") and
+    not message.text.startswith("👤"))
+async def admin_booking_details(message: types.Message):
+    print(f"DEBUG admin_booking_details NEW: текст = '{message.text}'")
+    
+    user_id = message.from_user.id
+    if user_id != ADMIN_ID:
+        return
+    
+    # Получаем статус из сохраненных данных
+    if user_id not in admin_temp_data or 'status' not in admin_temp_data[user_id]:
+        await message.answer("Ошибка: начните заново с 'Все бронирования'")
+        return
+    
+    status = admin_temp_data[user_id]['status']
+    
+    parts = message.text.split(' | ')
+    if len(parts) != 2:
+        await message.answer("Ошибка формата. Ожидается: Марка Модель | дата")
+        return
+    
+    car_info = parts[0].strip()
+    start_date = parts[1].strip()
+    
+    bookings = database.get_all_bookings_with_details()
+    selected_booking = None
+    for b in bookings:
+        if (b['status'] == status and 
+            f"{b['brand']} {b['model']}" == car_info and 
+            b['start_date'] == start_date):
+            selected_booking = b
+            break
+    
+    if not selected_booking:
+        await message.answer("Бронь не найдена")
+        return
+    
+    status_emoji = {'pending': '🟡', 'confirmed': '🟢', 'cancelled': '🔴'}.get(selected_booking['status'], '⚪')
+    status_text = {'pending': 'Ожидает', 'confirmed': 'Подтверждено', 'cancelled': 'Отменено'}.get(selected_booking['status'], 'Неизвестно')
+    
+    # Форматируем даты из YYYY-MM-DD в DD.MM.YYYY
+    start_display = selected_booking['start_date']
+    end_display = selected_booking['end_date']
+    try:
+        if ' ' in start_display:
+            dt = datetime.strptime(start_display.split(' ')[0], '%Y-%m-%d')
+            start_display = dt.strftime('%d.%m.%Y')
+        if ' ' in end_display:
+            dt = datetime.strptime(end_display.split(' ')[0], '%Y-%m-%d')
+            end_display = dt.strftime('%d.%m.%Y')
+    except:
+        pass
+    
+    text = f"""
+{status_emoji} *Бронирование #{selected_booking['rental_id']}*
+
+👤 Клиент: {selected_booking['full_name']}
+📞 Телефон: {selected_booking['phone']}
+📄 Паспорт: {selected_booking['passport_series']} {selected_booking['passport_number']}
+
+🚗 Машина: {selected_booking['brand']} {selected_booking['model']}
+💰 Цена: {selected_booking['price_per_day']}₽/день
+
+📅 Дата начала: {start_display}
+📅 Дата окончания: {end_display}
+💵 Итого: {selected_booking['total_cost']}₽
+
+📊 Статус: {status_text}
+"""
+    
+    action_buttons = []
+    if selected_booking['status'] == 'pending':
+        action_buttons.append([
+            InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"admin_confirm_{selected_booking['rental_id']}"),
+            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin_cancel_{selected_booking['rental_id']}")
+        ])
+    elif selected_booking['status'] == 'confirmed':
+        action_buttons.append([
+            InlineKeyboardButton(text="📝 Договор", callback_data=f"contract_{selected_booking['rental_id']}"),
+            InlineKeyboardButton(text="❌ Отменить", callback_data=f"admin_cancel_{selected_booking['rental_id']}")
+        ])
+    
+    # Контакты — передаём telegram_id клиента
+    action_buttons.append([InlineKeyboardButton(text="📞 Контакты", callback_data=f"admin_contact_{selected_booking['telegram_id']}")])
+    action_buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back_to_bookings")])
+    
+    action_keyboard = InlineKeyboardMarkup(inline_keyboard=action_buttons)
+    
+    # Отправляем фото
+    car_photo = selected_booking['photo_id']
+    passport_photo = selected_booking['passport_photo_id']
+    license_photo = selected_booking['driver_license_photo_id']
+    
+    media_group = []
+    if car_photo:
+        media_group.append(InputMediaPhoto(media=car_photo, caption=text[:1024], parse_mode='Markdown'))
+    if passport_photo:
+        media_group.append(InputMediaPhoto(media=passport_photo))
+    if license_photo:
+        media_group.append(InputMediaPhoto(media=license_photo))
+    
+    if media_group:
+        await message.answer_media_group(media=media_group)
+        await message.answer("Действия с бронью:", reply_markup=action_keyboard)
+    else:
+        await message.answer(text, parse_mode='Markdown', reply_markup=action_keyboard)
+    
+    # Сохраняем ID брони для возврата
+    admin_temp_data[user_id]['last_booking_id'] = selected_booking['rental_id']
+    admin_temp_data[user_id]['last_status'] = status
+
+#Подтверждение удаления
+@dp.message(lambda message: message.text and 
+    message.from_user.id == ADMIN_ID and 
+    " " in message.text and 
+    message.text != buttons.btn_admin_all_bookings.text and
+    message.text != buttons.btn_back_to_admin.text and
+    message.text != "🔙 Назад")
+async def confirm_delete_car(message: types.Message):
+    print(f"DEBUG confirm_delete_car: {message.text}")
+    if message.text == buttons.btn_back_to_admin.text:
+        return
+    car_name = message.text
+    cars = database.get_all_cars()
+    selected_car = None
+    for car in cars:
+        if f"{car['brand']} {car['model']}" == car_name:
+            selected_car = car
+            break
+    if not selected_car:
+        await message.answer('Машина не найдена')
+        return
+    user_id = message.from_user.id
+    admin_delete_car_id[user_id] = selected_car['car_id']
+
+    confirm_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Да, удалить", callback_data="confirm_delete")],
+            [InlineKeyboardButton(text="Нет, отмена", callback_data="cancel_delete")]
+        ]
+    )
+    await message.answer(
+        f"Вы уверены, что хотите удалить машину {selected_car['brand']} {selected_car['model']}?",
+        reply_markup=confirm_keyboard
+    )
+
+#Обработчик выбора машины и показа харак-ик (клиент)
+@dp.message(lambda message: message.text and 
+    message.from_user.id not in registration_step and
+    message.from_user.id not in booking_step and
+    message.from_user.id not in admin_car_step and
+    not message.text.startswith(('👤', '🟡', '🟢', '🔙', '🔴')) and
+    message.text not in ['Весь автопарк', 'Забронировать машину', 'Мои бронирования', 'Помощь', 'Назад', 'Список всех машин', 'Управление машинами', 'Все бронирования', 'Добавить машину', 'Удалить машину'])
+async def show_car_details(message: types.Message):
+    print(f"DEBUG show_car_details: админ? {message.from_user.id == ADMIN_ID}, текст: {message.text}")
+    if message.from_user.id == ADMIN_ID:
+        print("DEBUG: админ, выходим")
+        return
+    # Пропускаем, если пользователь админ
+    if message.from_user.id == ADMIN_ID:
+        return
+    
+    print(f"=== show_car_details ВЫЗВАНА для {message.text} ===")
+    # Убираем проверку на админа
+    # if message.from_user.id != ADMIN_ID:
+    #     return
+    
+    user_id = message.from_user.id 
+    car_text = message.text
+    brand_model_list = car_text.split(' ', 1)
+    if len(brand_model_list) < 2:
+        return
+    
+    brand, model = brand_model_list[0], brand_model_list[1]
+    cars = database.get_all_cars()
+    selected_car = None
+    for car in cars:
+        if car['brand'] == brand and car['model'] == model:
+            selected_car = car
+            break
+    
+    if not selected_car:
+        await message.answer('Машина не найдена')
+        return
+    
+    text = f"""
+*{selected_car['brand']} {selected_car['model']}*
+Год: {selected_car['year']}
+Цена: {selected_car['price_per_day']}₽/день
+Руль: {selected_car['steering_wheel']}
+Коробка: {selected_car['transmission']}
+Цвет: {selected_car['color']}
+Объем: {selected_car['engine_volume']} л
+"""
+    if selected_car['photo_id']:
+        await message.answer_photo(
+            selected_car['photo_id'],
+            caption=text,
+            parse_mode='Markdown'
+        )
+    else:
+        await message.answer(text, parse_mode='Markdown')
+
+
+
+
 
 #Обработчик кнопки управление машинами
 @dp.message(lambda message: message.text == buttons.btn_admin_cars.text)
@@ -342,35 +678,7 @@ async def admin_delete_car(message: types.Message):
         reply_markup=cars_keyboard
     )
 
-#Подтверждение удаления
-@dp.message(lambda message: message.text and message.from_user.id == ADMIN_ID and " " in message.text and message.text != buttons.btn_admin_all_bookings.text)
-async def confirm_delete_car(message: types.Message):
-    print(f"DEBUG confirm_delete_car: {message.text}")
-    if message.text == buttons.btn_back_to_admin.text:
-        return
-    car_name = message.text
-    cars = database.get_all_cars()
-    selected_car = None
-    for car in cars:
-        if f"{car['brand']} {car['model']}" == car_name:
-            selected_car = car
-            break
-    if not selected_car:
-        await message.answer('Машина не найдена')
-        return
-    user_id = message.from_user.id
-    admin_delete_car_id[user_id] = selected_car['car_id']
 
-    confirm_keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="Да, удалить", callback_data="confirm_delete")],
-            [InlineKeyboardButton(text="Нет, отмена", callback_data="cancel_delete")]
-        ]
-    )
-    await message.answer(
-        f"Вы уверены, что хотите удалить машину {selected_car['brand']} {selected_car['model']}?",
-        reply_markup=confirm_keyboard
-    )
 #Обработчик подтверждения удаления
 @dp.callback_query(lambda c: c.data == 'confirm_delete')
 async def confirm_delete_car(callback: types.CallbackQuery):
@@ -463,21 +771,81 @@ async def registration_back(callback: types.CallbackQuery):
 #     del booking_step[user_id]
 
 #Общий обработчик кнопки назад
-@dp.callback_query(lambda c: c.data == buttons.BACK_CALLBACK)
-async def universal_back(callback: types.CallbackQuery):
+@dp.message(lambda message: message.text == "Назад" or message.text == "🔙 Назад")
+async def back_handler(message: types.Message):
+    user_id = message.from_user.id
+    
+    if user_id == ADMIN_ID and user_id in admin_temp_data:
+        # Уровень 3: просмотр броней клиента → вернуться к списку клиентов
+        if 'client_name' in admin_temp_data[user_id]:
+            client_name = admin_temp_data[user_id].pop('client_name')
+            status = admin_temp_data[user_id].get('status', 'pending')
+            status_text = "ожидают подтверждения" if status == 'pending' else "ожидают встречи"
+            
+            bookings = database.get_all_bookings_with_details()
+            
+            filtered = [b for b in bookings if b['status'] == status]
+            unique_clients = {}
+            for b in filtered:
+                client_id = b['client_id']
+                if client_id not in unique_clients:
+                    unique_clients[client_id] = b['full_name']
+            
+            client_buttons = []
+            for client_id, full_name in unique_clients.items():
+                client_buttons.append([KeyboardButton(text=f"👤 {full_name}")])
+            client_buttons.append([KeyboardButton(text="🔙 Назад")])
+            
+            admin_temp_data[user_id]['at_clients_level'] = True
+            
+            client_keyboard = ReplyKeyboardMarkup(keyboard=client_buttons, resize_keyboard=True)
+            await message.answer(
+                f"Клиенты, у которых есть брони со статусом '{status_text}':",
+                reply_markup=client_keyboard
+            )
+            return
+        
+        # Уровень 2: список клиентов → вернуться к выбору статуса
+        if admin_temp_data[user_id].get('at_clients_level'):
+            status = admin_temp_data[user_id].get('status', 'pending')
+            
+            bookings = database.get_all_bookings_with_details()
+            pending_count = len([b for b in bookings if b['status'] == 'pending'])
+            confirmed_count = len([b for b in bookings if b['status'] == 'confirmed'])
+            
+            status_buttons = []
+            if pending_count > 0:
+                status_buttons.append([KeyboardButton(text=f"🟡 Ожидают подтверждения ({pending_count})")])
+            if confirmed_count > 0:
+                status_buttons.append([KeyboardButton(text=f"🟢 Ожидают встречи ({confirmed_count})")])
+            status_buttons.append([KeyboardButton(text="🔙 Назад")])
+            
+            admin_temp_data[user_id] = {'status': status}
+            
+            status_keyboard = ReplyKeyboardMarkup(keyboard=status_buttons, resize_keyboard=True)
+            await message.answer(
+                "Выберите статус для просмотра:",
+                reply_markup=status_keyboard
+            )
+            return
+        
+        # Уровень 1: выбор статуса → вернуться в админ-панель
+        del admin_temp_data[user_id]
+        await message.answer("Админ панель:", reply_markup=admin_main_keyboard)
+        return
+    
+    # Если админ нажал "Назад" но его нет в admin_temp_data
+    if user_id == ADMIN_ID:
+        await message.answer("Админ панель:", reply_markup=admin_main_keyboard)
+        return
+    
+    # Для обычных пользователей
+    await message.answer("Главное меню:", reply_markup=reg_keyboard)
+# Заглушка для кнопки "Договор"
+@dp.callback_query(lambda c: c.data.startswith("contract_"))
+async def show_contract(callback: types.CallbackQuery):
     await callback.answer()
-    user_id = callback.from_user.id
-    if user_id in registration_step:
-        await registration_back(callback)
-    elif user_id in admin_car_step:
-        if admin_car_step[user_id] > 1:
-            admin_car_step[user_id] -= 1
-            await callback.message.delete()
-            await callback.message.answer(f"Шаг {admin_car_step[user_id]} из 9. Повторите ввод:")
-    # elif user_id in booking_step:
-    #     await back_booking(callback)
-    else:
-        await callback.message.delete()
+    await callback.message.answer("📝 Раздел 'Договор' в разработке")
 
 #Обработчик кнопки отмена во время регистрации
 @dp.callback_query(lambda c: c.data == buttons.CANCEL_CALLBACK)
@@ -725,199 +1093,11 @@ async def show_cars_for_client(message: types.Message):
         reply_markup=cars_keyboard
     )
 
-#Все бронирования (админ)
-@dp.message(lambda message: message.text == buttons.btn_admin_all_bookings.text)
-async def admin_all_bookings(message: types.Message):
-    await message.answer("DEBUG: обработчик admin_all_bookings сработал!")
-    if message.from_user.id != ADMIN_ID:
-        return
-    
-    bookings = database.get_all_bookings_with_details()
-    
-    if not bookings:
-        await message.answer("Нет ни одного бронирования")
-        return
-    
-    # Разделяем по статусам
-    pending = [b for b in bookings if b['status'] == 'pending']
-    confirmed = [b for b in bookings if b['status'] == 'confirmed']
-    
-    # Клавиатура для ожидающих
-    if pending:
-        pending_buttons = []
-        for b in pending:
-            text = f"{b['full_name']} | {b['brand']} {b['model']} | {b['start_date']}"
-            pending_buttons.append([KeyboardButton(text=text)])
-        pending_buttons.append([KeyboardButton(text="Назад")])
-        pending_keyboard = ReplyKeyboardMarkup(keyboard=pending_buttons, resize_keyboard=True)
-        
-        await message.answer(
-            f"🟡 В ожидании ({len(pending)})\n\n"
-            "Нажмите на бронь для просмотра:",
-            parse_mode='Markdown',
-            reply_markup=pending_keyboard
-        )
-    else:
-        await message.answer("🟡 Нет броней в ожидании")
-    
-    # Клавиатура для подтвержденных
-    if confirmed:
-        confirmed_buttons = []
-        for b in confirmed:
-            text = f"{b['full_name']} | {b['brand']} {b['model']} | {b['start_date']}"
-            confirmed_buttons.append([KeyboardButton(text=text)])
-        confirmed_buttons.append([KeyboardButton(text="Назад")])
-        confirmed_keyboard = ReplyKeyboardMarkup(keyboard=confirmed_buttons, resize_keyboard=True)
-        
-        await message.answer(
-            f"🟢 Подтвержденные ({len(confirmed)})\n\n"
-            "Нажмите на бронь для просмотра:",
-            parse_mode='Markdown',
-            reply_markup=confirmed_keyboard
-        )
-    else:
-        await message.answer("🟢 Нет подтвержденных броней.")
-
-#Выбор конкретной брони
-@dp.message(lambda message: message.text and message.from_user.id == ADMIN_ID and message.text != buttons.btn_admin_all_bookings.text and " | " in message.text)
-async def admin_booking_details(message: types.Message):
-    print(f"DEBUG admin_booking_details: текст = '{message.text}'")
-    if " | " not in message.text:
-        print("DEBUG: нет разделителя, выходим")
-        return
-    user_id = message.from_user.id
-    if user_id != ADMIN_ID:
-        return
-    
-    parts = message.text.split(' | ')
-    if len(parts) != 3:
-        await message.answer(f"Ошибка формата: {message.text}")
-        return
-    
-    full_name = parts[0].strip()
-    car_info = parts[1].strip()
-    start_date = parts[2].strip()
-    
-    bookings = database.get_all_bookings_with_details()
-    selected_booking = None
-    for b in bookings:
-        if b['full_name'] == full_name and f"{b['brand']} {b['model']}" == car_info and b['start_date'] == start_date:
-            selected_booking = b
-            break
-    
-    if not selected_booking:
-        await message.answer(f"Бронь не найдена")
-        return
-    
-    # Формируем текст
-    status_emoji = {'pending': '🟡', 'confirmed': '🟢', 'cancelled': '🔴'}.get(selected_booking['status'], '⚪')
-    status_text = {'pending': 'Ожидает', 'confirmed': 'Подтверждено', 'cancelled': 'Отменено'}.get(selected_booking['status'], 'Неизвестно')
-    
-    text = f"""
-{status_emoji} *Бронирование #{selected_booking['rental_id']}*
-
-Клиент: {selected_booking['full_name']}
-Телефон: {selected_booking['phone']}
-Паспорт: {selected_booking['passport_series']} {selected_booking['passport_number']}
-
-Машина: {selected_booking['brand']} {selected_booking['model']}
-Цена: {selected_booking['price_per_day']}₽/день
-
-Дата начала: {selected_booking['start_date']}
-Дата окончания: {selected_booking['end_date']}
-Итого: {selected_booking['total_cost']}₽
-
-Статус: {status_text}
-"""
-    
-    # Кнопки действий для админа
-    action_buttons = []
-    if selected_booking['status'] == 'pending':
-        action_buttons.append([
-            InlineKeyboardButton(text="Подтвердить", callback_data=f"admin_confirm_{selected_booking['rental_id']}"),
-            InlineKeyboardButton(text="Отклонить", callback_data=f"admin_cancel_{selected_booking['rental_id']}")
-        ])
-    action_buttons.append([InlineKeyboardButton(text="Контакты", callback_data=f"admin_chat_{selected_booking['client_id']}")])
-    action_buttons.append([InlineKeyboardButton(text="Назад", callback_data="admin_back_to_bookings")])
-    
-    action_keyboard = InlineKeyboardMarkup(inline_keyboard=action_buttons)
-    
-    # Отправляем фото, если есть
-    car_photo = selected_booking['photo_id']
-    passport_photo = selected_booking['passport_photo_id']
-    license_photo = selected_booking['driver_license_photo_id']
-    
-    media_group = []
-    if car_photo:
-        media_group.append(InputMediaPhoto(media=car_photo, caption=text, parse_mode='Markdown'))
-    if passport_photo:
-        media_group.append(InputMediaPhoto(media=passport_photo))
-    if license_photo:
-        media_group.append(InputMediaPhoto(media=license_photo))
-    
-    if media_group:
-        await message.answer_media_group(media=media_group)
-        await message.answer("Действия с бронью:", reply_markup=action_keyboard)
-    else:
-        await message.answer(text, parse_mode='Markdown', reply_markup=action_keyboard)
 
 
-#Обработчик выбора машины и показа харак-ик (клиент)
-@dp.message(lambda message: message.text and 
-    message.from_user.id not in registration_step and
-    message.from_user.id not in booking_step and
-    message.from_user.id not in admin_car_step and
-    message.text not in ['Весь автопарк', 'Забронировать машину', 'Мои бронирования', 'Помощь', 'Назад', 'Список всех машин', 'Управление машинами', 'Все бронирования', 'Добавить машину', 'Удалить машину'])
-async def show_car_details(message: types.Message):
-    print(f"DEBUG show_car_details: админ? {message.from_user.id == ADMIN_ID}, текст: {message.text}")
-    if message.from_user.id == ADMIN_ID:
-        print("DEBUG: админ, выходим")
-        return
-    # Пропускаем, если пользователь админ
-    if message.from_user.id == ADMIN_ID:
-        return
-    
-    print(f"=== show_car_details ВЫЗВАНА для {message.text} ===")
-    # Убираем проверку на админа
-    # if message.from_user.id != ADMIN_ID:
-    #     return
-    
-    user_id = message.from_user.id 
-    car_text = message.text
-    brand_model_list = car_text.split(' ', 1)
-    if len(brand_model_list) < 2:
-        return
-    
-    brand, model = brand_model_list[0], brand_model_list[1]
-    cars = database.get_all_cars()
-    selected_car = None
-    for car in cars:
-        if car['brand'] == brand and car['model'] == model:
-            selected_car = car
-            break
-    
-    if not selected_car:
-        await message.answer('Машина не найдена')
-        return
-    
-    text = f"""
-*{selected_car['brand']} {selected_car['model']}*
-Год: {selected_car['year']}
-Цена: {selected_car['price_per_day']}₽/день
-Руль: {selected_car['steering_wheel']}
-Коробка: {selected_car['transmission']}
-Цвет: {selected_car['color']}
-Объем: {selected_car['engine_volume']} л
-"""
-    if selected_car['photo_id']:
-        await message.answer_photo(
-            selected_car['photo_id'],
-            caption=text,
-            parse_mode='Markdown'
-        )
-    else:
-        await message.answer(text, parse_mode='Markdown')
-    
+
+
+
 # #Обработчик для кнопки свободных машин
 # @dp.callback_query(lambda c: c.data == buttons.FREE_CARS_CALLBACK)
 # async def show_free_cars(callback: types.CallbackQuery):
@@ -1223,26 +1403,18 @@ async def handle_booking_message(message: types.Message, user_id: int):
             await message.answer("Неверный формат. Введите ДД.ММ.ГГГГ")
     
     elif step == 'waiting_start_date':
-        # Проверяем, не выбрал ли пользователь машину (если step не обновился)
-        car_names = [f"{car['brand']} {car['model']}" for car in database.get_all_cars()]
-        if message.text in car_names:
-            # Вызываем функцию обработки выбора машины
-            await handle_car_choice(message, user_id, message.text)
-            return
-        else:
-            # нормальная обработка даты
-            try:
-                start_date = datetime.strptime(message.text, '%d.%m.%Y')
-                if start_date < datetime.now():
-                    await message.answer("Дата не может быть в прошлом")
-                    return
-                booking_data[user_id]['start_date'] = message.text
-                days = booking_data[user_id]['days']
-                end_date = start_date + timedelta(days=days)
-                booking_data[user_id]['end_date'] = end_date.strftime('%d.%m.%Y')
-                await proceed_to_available_cars(message, user_id, indefinite=False)
-            except ValueError:
-                await message.answer("Неверный формат даты")
+        try:
+            start_date = datetime.strptime(message.text, '%d.%m.%Y')
+            if start_date < datetime.now():
+                await message.answer("Дата не может быть в прошлом")
+                return
+            booking_data[user_id]['start_date'] = message.text
+            days = booking_data[user_id]['days']
+            end_date = start_date + timedelta(days=days)
+            booking_data[user_id]['end_date'] = end_date.strftime('%d.%m.%Y')
+            await proceed_to_available_cars(message, user_id, indefinite=False)
+        except ValueError:
+            await message.answer("Неверный формат даты")
     elif step == "waiting_car_choice":
         car_name = message.text
         
@@ -1405,7 +1577,7 @@ async def final_confirm_booking(callback: types.CallbackQuery):
                 InlineKeyboardButton(text="Подтвердить", callback_data=f"admin_confirm_{booking_id}"),
                 InlineKeyboardButton(text="Отклонить", callback_data=f"admin_cancel_{booking_id}")
             ],
-            [InlineKeyboardButton(text="ЛС клиента", callback_data=f"admin_chat_{user_id}")]
+            [InlineKeyboardButton(text="ЛС клиента", callback_data=f"admin_contact_{user_id}")]
         ]
     )
 
@@ -1473,12 +1645,11 @@ async def admin_cancel_booking(callback: types.CallbackQuery):
     database.update_booking_status(booking_id, 'cancelled')
     await callback.message.edit_text("Заявка отклонена")
 
-@dp.callback_query(lambda c: c.data.startswith("admin_chat_"))
-async def admin_chat_client(callback: types.CallbackQuery):
+@dp.callback_query(lambda c: c.data.startswith("admin_contact_"))
+async def admin_contact_client(callback: types.CallbackQuery):
     await callback.answer()
-    user_id = int(callback.data.split("_")[2])
+    user_id = int(callback.data.split("_")[2])  # это тоже telegram_id
     
-    # Получаем данные клиента из БД
     client = database.get_client_by_tgid(user_id)
     
     if not client:
@@ -1486,11 +1657,48 @@ async def admin_chat_client(callback: types.CallbackQuery):
         return
     
     await callback.message.answer(
-        f"Клиент: {client['full_name']}\n"
-        f"Телефон: `{client['phone']}`\n\n",
+        f"👤 Клиент: {client['full_name']}\n"
+        f"📞 Телефон: `{client['phone']}`\n\n",
         parse_mode='Markdown'
     )
-
+#обработчик кнопки "Назад" в inline-клавиатуре
+@dp.callback_query(lambda c: c.data == "admin_back_to_bookings")
+async def admin_back_to_bookings(callback: types.CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    await callback.message.delete()
+    
+    if user_id not in admin_temp_data:
+        await callback.message.answer("Ошибка. Начните заново с 'Все бронирования'")
+        return
+    
+    status = admin_temp_data[user_id].get('status', 'pending')
+    status_text = "ожидают подтверждения" if status == 'pending' else "ожидают встречи"
+    
+    bookings = database.get_all_bookings_with_details()
+    filtered = [b for b in bookings if b['status'] == status]
+    
+    unique_clients = {}
+    for b in filtered:
+        client_id = b['client_id']
+        if client_id not in unique_clients:
+            unique_clients[client_id] = b['full_name']
+    
+    client_buttons = []
+    for client_id, full_name in unique_clients.items():
+        client_buttons.append([KeyboardButton(text=f"👤 {full_name}")])
+    client_buttons.append([KeyboardButton(text="🔙 Назад")])
+    
+    # Убираем client_name, устанавливаем флаг что мы на уровне клиентов
+    admin_temp_data[user_id].pop('client_name', None)
+    admin_temp_data[user_id].pop('last_booking_id', None)
+    admin_temp_data[user_id]['at_clients_level'] = True  # ← флаг
+    
+    client_keyboard = ReplyKeyboardMarkup(keyboard=client_buttons, resize_keyboard=True)
+    await callback.message.answer(
+        f"Клиенты, у которых есть брони со статусом '{status_text}':",
+        reply_markup=client_keyboard
+    )
 
 #Отмена брони
 @dp.callback_query(lambda c: c.data == "cancel_booking")
@@ -1578,8 +1786,14 @@ async def show_meeting_info(callback: types.CallbackQuery):
 @dp.message()
 async def handle_all_messages(message: types.Message):
     user_id = message.from_user.id
-    print(f"=== handle_all_messages: текст '{message.text}', user_id={user_id}")  # ← добавить
+    print(f"=== handle_all_messages: текст '{message.text}', user_id={user_id}")
     print(f"booking_step: {booking_step}")
+    
+    # Пропускаем админские кнопки с эмодзи
+    if message.text and message.text.startswith(('👤', '🟡', '🟢', '🔙')):
+        print("→ Админ-кнопка, пропускаем")
+        return
+    
     if user_id in booking_step:
         print("→ Переход в handle_booking_message")
         await handle_booking_message(message, user_id)
