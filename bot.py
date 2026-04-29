@@ -1093,31 +1093,6 @@ async def show_cars_for_client(message: types.Message):
         reply_markup=cars_keyboard
     )
 
-
-
-
-
-
-# #Обработчик для кнопки свободных машин
-# @dp.callback_query(lambda c: c.data == buttons.FREE_CARS_CALLBACK)
-# async def show_free_cars(callback: types.CallbackQuery):
-#     await callback.answer()
-#     user_id = callback.from_user.id
-#     booking_step[user_id] = "free_cars"
-#     await callback.message.edit_text("Здесь будет ввод дат и показ свободных машин")
-
-# #Обработчик для кнопки занятых машин
-# @dp.callback_query(lambda c: c.data == buttons.BUSY_CARS_CALLBACK)
-# async def show_busy_cars(callback: types.CallbackQuery):
-#     await callback.answer()
-#     user_id = callback.from_user.id
-#     booking_step[user_id] = "busy_cars"
-#     await callback.message.edit_text("Здесь будет список занятых машин")
-
-
-
-
-
 #Обработчик кнопки бронирования машин
 @dp.message(lambda message: message.text == buttons.btn_book_a_car.text)
 async def book_a_car(message: types.Message):
@@ -1197,15 +1172,6 @@ async def cancel_booking_docs(callback: types.CallbackQuery):
         "Главное меню:",
         reply_markup=reg_keyboard
     )
-
-
-
-    # booking_step[user_id] = "waiting_start_date"
-    # booking_data[user_id] = {}
-    # await message.answer("Введите дату и время желаемой даты аренды в формате - ДД.ММ.ГГГГ ЧЧ:ММ\n" \
-    # "Пример: 11.11.2011 11:11"
-    #                     ,reply_markup=dur_reg_keyboard)
-
 
 #Функция перехода к доступным машинам
 async def proceed_to_available_cars(message: types.Message, user_id: int, indefinite: bool):
